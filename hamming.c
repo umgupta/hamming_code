@@ -4,8 +4,10 @@
 #include<stdint.h>
 #include<stdlib.h>
 #include<string.h>
-#define USAGE "Give 1 for 16 bit implementation, 2 for 64-bit implementation"
-
+#define SIZE 60000
+#define OFFSET 100
+#define USAGE_ARG1 "./a.out arg1 arg2 \n arg1 -\tgive 1 to run a 16-bit implementation, \n\tgive 2 to run a 64-bit implementation \n "
+#define USAGE_ARG2 "arg2-\tgive 1 to align memory to 64 byte \n\tgive 2 to run with unaligned memory (unaligned to 64 bytes)\n"
 //you have to pass offset and size in units of byte/ size is a multiple of 8 and offset is a multiple of 2.
 static inline int compute_ham_similarity_64(unsigned short* , unsigned short*,
                                 int, int);
@@ -16,15 +18,34 @@ static inline int setbits(uint8x8_t );
 
 int main(int argc, char *argv[]){
 	
-	if (argc!=2){
-	printf (USAGE);
-	exit (0);
+	if (argc!=3){
+		printf (USAGE_ARG1);
+		printf (USAGE_ARG2);
+		exit (0);
 	}
-	int i,count,size=600000,offset=0;
+	
+	int i,count,size=SIZE,offset=OFFSET;
 	printf("size in bytes is %d and offset is %d\n",size,offset);
-
+	unsigned short* reference;
+	unsigned short* circ;
         struct timeval start, end;
-        unsigned short reference[size/2], circ[size/2];
+
+	if(0==strcmp(argv[2],"2")){
+		printf("running unaligned \n");		
+		reference=malloc(size);
+		circ=malloc(size/2);        
+	}else if (0==strcmp(argv[2],"1")){
+		printf("running aligned to 64 bytes\n");
+		reference=malloc(size+64);
+		reference=(unsigned short*)(((int)reference+64)&(~0x3F));
+			
+		circ=malloc(size+64);
+		circ=(unsigned short*)(((int)circ+64)&(~0x3F));
+	}else{
+		printf("arg2 should be 1 or 2 only\n");
+		exit(0);
+	}
+
 
 	for (i=0;i<size/2;i++){
                 reference[i]=random();
