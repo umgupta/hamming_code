@@ -5,13 +5,14 @@
 #include<stdlib.h>
 #include<string.h>
 #define USAGE "Give 1 for 16 bit implementation, 2 for 64-bit implementation"
+
 //you have to pass offset and size in units of byte/ size is a multiple of 8 and offset is a multiple of 2.
 static inline int compute_ham_similarity_64(unsigned short* , unsigned short*,
                                 int, int);
 static inline int compute_ham_similarity_16(unsigned short* , unsigned short*,
                                 int, int);
 
-static inline int setbits(uint64x1_t );
+static inline int setbits(uint8x8_t );
 
 int main(int argc, char *argv[]){
 	
@@ -19,7 +20,7 @@ int main(int argc, char *argv[]){
 	printf (USAGE);
 	exit (0);
 	}
-	int i,count,size=600,offset=100;
+	int i,count,size=600000,offset=0;
 	printf("size in bytes is %d and offset is %d\n",size,offset);
 
         struct timeval start, end;
@@ -48,9 +49,9 @@ int main(int argc, char *argv[]){
 	printf("Hamming value: %d\n",count);
 }
 
-static inline int setbits(uint64x1_t a){
+static inline int setbits(uint8x8_t d){
         
-	register uint8x8_t d= vcnt_u8(vreinterpret_u8_u64 (a));
+//	register uint8x8_t d= vcnt_u8(vreinterpret_u8_u64 (a));
 	return (int) (vget_lane_u8 (d,0)+ vget_lane_u8 (d,1)+ vget_lane_u8 (d,2)+
 		      vget_lane_u8 (d,3)+ vget_lane_u8 (d,4)+ vget_lane_u8 (d,5)+
 		      vget_lane_u8 (d,6)+ vget_lane_u8 (d,7) );
@@ -62,25 +63,60 @@ static inline int compute_ham_similarity_64(unsigned short* ref, unsigned short*
 
 	const uint64_t* 	ref_w=(uint64_t*) ref;
         const uint64_t* 	circ_w=(uint64_t*) circ_array;
-        register uint64x1_t 	a,b,c,temp,temp1;
+        register uint64x1_t 	a,b,c,d,temp;
         register int 		i=0,count=0;
         int 			size_l=size/8,off_n;
         register int* 		ptr_circ=&off_n;
-
+	register uint8x8_t      temp1,temp2,temp3;
 	switch(off&0x7){
 		case 0: 
 			off_n=off>>3;
+			//asm ("PLD [%[ADDR],#64] \n\t"
+			//:
+			//: [ADDR]"r"(ref_w));
 			while(*ptr_circ<size_l){
 				c=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
-				temp1=vadd_u64 (c,temp1);
-				count=count+setbits(c);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
+				if(*ptr_circ<size_l){
+					d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));
+					if (*ptr_circ<size_l){
+						d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));
+						if (*ptr_circ<size_l){
+                                                	d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                                	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));			
+							if (*ptr_circ<size_l){
+                                                        	d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));
+							}
+						}
+					}
+				}
+				count=count+setbits(temp1);
 			}
 			*ptr_circ=0;
 			while(i<size_l){
 				c=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
-                                count=count+setbits(c);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
+                        	if(*ptr_circ<size_l){
+                                        d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));
+					if (*ptr_circ<size_l){
+                                                d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                                temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));
+                                                if (*ptr_circ<size_l){
+                                                        d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                                        temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));                  
+                                                        if (*ptr_circ<size_l){
+                                                                d=veor_u64(vld1_u64(&ref_w[i++]),vld1_u64(&circ_w[(*ptr_circ)++]));
+                                                                temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (d)));
+                                                        }
+                                                }
+                                        }
+                                }
+                                count=count+setbits(temp1);
 			}
-			
 			return (size*8-count);
 		case 2:
 			off_n=off>>3;
@@ -89,56 +125,230 @@ static inline int compute_ham_similarity_64(unsigned short* ref, unsigned short*
 				b=vld1_u64(&circ_w[(*ptr_circ)++]);
 				temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
 				c=veor_u64(vld1_u64(&ref_w[i++]),temp);
-				count=count+setbits(c);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
 				a=b;
+				if (*ptr_circ<size_l){
+					b=vld1_u64(&circ_w[(*ptr_circ)++]);
+        	                        temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                	                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                        	        temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                	a=b;
+					if (*ptr_circ<size_l){
+                                       	 	b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        	temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                                        	c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        	a=b;
+						if (*ptr_circ<size_l){
+                                        		b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        		temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                                        		c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        		temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        		a=b;
+							if (*ptr_circ<size_l){
+                                       	 			b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        			temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                                        			c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        			temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        			a=b;
+							}
+						}
+					}
+				}
+			count=count+setbits(temp1);
 			}
 			*ptr_circ=0;
                         while (i<size_l){		
 				b=vld1_u64(&circ_w[(*ptr_circ)++]);
-                                temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
-                                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
-                                count=count+setbits(c);
+				temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+				c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
 				a=b;
+				if (i<size_l){
+					b=vld1_u64(&circ_w[(*ptr_circ)++]);
+        	                        temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                	                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                        	        temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                	a=b;
+					if (i<size_l){
+                                       	 	b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        	temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                                        	c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        	a=b;
+						if (i<size_l){
+                                        		b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        		temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                                        		c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        		temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        		a=b;
+							if (i<size_l){
+                                       	 			b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        			temp=vorr_u64(vshr_n_u64(a,16),vshl_n_u64(b,48));
+                                        			c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        			temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        			a=b;
+							}
+						}	
+					}
+				}
+			count=count+setbits(temp1);			
 			}
 			return (size*8-count);
 		case 4:
 			off_n=off>>3;
-                        a=vld1_u64(&circ_w[(*ptr_circ)++]);
-                        while(*ptr_circ<size_l){
-                                b=vld1_u64(&circ_w[(*ptr_circ)++]);
-                                temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
-                                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
-                                count=count+setbits(c);
+			a=vld1_u64(&circ_w[(*ptr_circ)++]);
+			while(*ptr_circ<size_l){
+				b=vld1_u64(&circ_w[(*ptr_circ)++]);
+				temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+				c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
 				a=b;
-                        } 
-                        *ptr_circ=0;
-                        while(i<size_l){ 
-                                b=vld1_u64(&circ_w[(*ptr_circ)++]);
-                                temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
-                                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
-                                count=count+setbits(c);
+				if (*ptr_circ<size_l){
+					b=vld1_u64(&circ_w[(*ptr_circ)++]);
+        	                        temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                	                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                        	        temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                	a=b;
+					if (*ptr_circ<size_l){
+                                       	 	b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        	temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                                        	c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        	a=b;
+						if (*ptr_circ<size_l){
+                                        		b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        		temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                                        		c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        		temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        		a=b;
+							if (*ptr_circ<size_l){
+                                       	 			b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        			temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                                        			c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        			temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        			a=b;
+							}
+						}
+					}
+				}
+			count=count+setbits(temp1);
+			}
+			*ptr_circ=0;
+                        while (i<size_l){		
+				b=vld1_u64(&circ_w[(*ptr_circ)++]);
+				temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+				c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
 				a=b;
-                        }
+				if (i<size_l){
+					b=vld1_u64(&circ_w[(*ptr_circ)++]);
+        	                        temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                	                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                        	        temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                	a=b;
+					if (i<size_l){
+                                       	 	b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        	temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                                        	c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        	a=b;
+						if (i<size_l){
+                                        		b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        		temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                                        		c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        		temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        		a=b;
+							if (i<size_l){
+                                       	 			b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        			temp=vorr_u64(vshr_n_u64(a,32),vshl_n_u64(b,32));
+                                        			c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        			temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        			a=b;
+							}
+						}	
+					}
+				}
+			count=count+setbits(temp1);			
+			}
 			return (size*8-count);
 		case 6:
 			off_n=off>>3;
-                        a=vld1_u64(&circ_w[(*ptr_circ)++]);
-                        while(*ptr_circ<size_l){
-                                b=vld1_u64(&circ_w[(*ptr_circ)++]);
-                                temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
-                                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
-                                count=count+setbits(c);
-                                a=b;    
-                        }       
-                        *ptr_circ=0;
-                        while(i<size_l){ 
-                                b=vld1_u64(&circ_w[(*ptr_circ)++]);
-                                temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
-                                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
-                                count=count+setbits(c);
-                                a=b;
-                        }
-                        return (size*8-count);
+			a=vld1_u64(&circ_w[(*ptr_circ)++]);
+			while(*ptr_circ<size_l){
+				b=vld1_u64(&circ_w[(*ptr_circ)++]);
+				temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+				c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
+				a=b;
+				if (*ptr_circ<size_l){
+					b=vld1_u64(&circ_w[(*ptr_circ)++]);
+        	                        temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                	                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                        	        temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                	a=b;
+					if (*ptr_circ<size_l){
+                                       	 	b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        	temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                                        	c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        	a=b;
+						if (*ptr_circ<size_l){
+                                        		b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        		temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                                        		c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        		temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        		a=b;
+							if (*ptr_circ<size_l){
+                                       	 			b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        			temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                                        			c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        			temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        			a=b;
+							}
+						}
+					}
+				}
+			count=count+setbits(temp1);
+			}
+			*ptr_circ=0;
+                        while (i<size_l){		
+				b=vld1_u64(&circ_w[(*ptr_circ)++]);
+				temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+				c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+				temp1=vcnt_u8(vreinterpret_u8_u64 (c));
+				a=b;
+				if (i<size_l){
+					b=vld1_u64(&circ_w[(*ptr_circ)++]);
+        	                        temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                	                c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                        	        temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                	a=b;
+					if (i<size_l){
+                                       	 	b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        	temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                                        	c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        	temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        	a=b;
+						if (i<size_l){
+                                        		b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        		temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                                        		c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        		temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        		a=b;
+							if (i<size_l){
+                                       	 			b=vld1_u64(&circ_w[(*ptr_circ)++]);
+                                        			temp=vorr_u64(vshr_n_u64(a,48),vshl_n_u64(b,16));
+                                        			c=veor_u64(vld1_u64(&ref_w[i++]),temp);
+                                        			temp1=vadd_u8(temp1,vcnt_u8(vreinterpret_u8_u64 (c)));
+                                        			a=b;
+							}
+						}	
+					}
+				}
+			count=count+setbits(temp1);			
+			}
+			return (size*8-count);	
 		default:
 			printf("something gone wrong");
 			return 0;
@@ -161,14 +371,50 @@ static inline int compute_ham_similarity_16(unsigned short *ref, unsigned short 
         int              c = 0;
         unsigned char    *p = (unsigned char *) &val;
         for (i=0; i<size-off; i++){
-               val = ref[i] ^ circ_array[i+off];
-               c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
-               total_bits_diff += c;
-        }
+               	val = ref[i] ^ circ_array[i+off];
+               	c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               	total_bits_diff += c;
+		i++;
+		if(i<size-off){		
+			val = ref[i] ^ circ_array[i+off];
+               		c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               		total_bits_diff += c;
+			i++;
+			if(i<size-off){		
+				val = ref[i] ^ circ_array[i+off];
+               			c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               			total_bits_diff += c;
+				i++;				
+				if(i<size-off){		
+					val = ref[i] ^ circ_array[i+off];
+               				c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               				total_bits_diff += c;
+				}
+			}
+		}
+	}
         for (i=size-off; i<size; i++) {
-               val = ref[i] ^ circ_array[i-(size-off)];
-               c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
-               total_bits_diff += c;
+               	val = ref[i] ^ circ_array[i-(size-off)];
+               	c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               	total_bits_diff += c;
+		i++;		
+		if(i<size){		
+			val = ref[i] ^ circ_array[i+off];
+               		c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               		total_bits_diff += c;
+			i++;
+			if(i<size){		
+				val = ref[i] ^ circ_array[i+off];
+               			c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               			total_bits_diff += c;
+				i++;				
+				if(i<size){		
+					val = ref[i] ^ circ_array[i+off];
+               				c = BitsSetTable256[p[0]] + BitsSetTable256[p[1]] ;
+               				total_bits_diff += c;
+				}
+			}
+		}
         }
         return ((size)*2*8-total_bits_diff);
 }
