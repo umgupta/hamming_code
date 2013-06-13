@@ -33,7 +33,7 @@ int main(int argc, char *argv[]){
 	if(0==strcmp(argv[2],"2")){
 		printf("running unaligned \n");		
 		reference=malloc(size);
-		circ=malloc(size/2);        
+		circ=malloc(size);        
 	}else if (0==strcmp(argv[2],"1")){
 		printf("running aligned to 64 bytes\n");
 		reference=malloc(size+64);
