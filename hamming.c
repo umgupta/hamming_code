@@ -5,7 +5,7 @@
 #include<stdlib.h>
 #include<string.h>
 #define SIZE 60000
-#define OFFSET 100
+#define OFFSET 0
 #define USAGE_ARG1 "./a.out arg1 arg2 \n arg1 -\tgive 1 to run a 16-bit implementation, \n\tgive 2 to run a 64-bit implementation \n "
 #define USAGE_ARG2 "arg2-\tgive 1 to align memory to 64 byte \n\tgive 2 to run with unaligned memory (unaligned to 64 bytes)\n"
 //you have to pass offset and size in units of byte/ size is a multiple of 8 and offset is a multiple of 2.
@@ -439,4 +439,3 @@ static inline int compute_ham_similarity_16(unsigned short *ref, unsigned short 
         }
         return ((size)*2*8-total_bits_diff);
 }
-
